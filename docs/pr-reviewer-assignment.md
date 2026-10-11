@@ -19,13 +19,13 @@ curl http://localhost:8080/health
 Включённый `.env` содержит настройки локальной демонстрационной БД. Они не предназначены для production.
 
 ```bash
-# Unit-тесты, без БД
-go test ./internal/...
 # Интеграционные и E2E-тесты
 docker compose up -d postgres_test
 make test-integration
 make test-e2e
 ```
+
+Отдельных unit-тестов в импортированном снимке нет; CI запускает имеющиеся интеграционные и E2E-тесты с PostgreSQL.
 
 [Нагрузочный сценарий k6](../projects/pr-reviewer-assignment/scripts/load_test/k6.js). Утверждение p95 < 300 мс есть в исходном README, но отдельного воспроизводимого отчёта здесь нет. Покрытие > 75% также не подтверждено сохранённым отчётом.
 

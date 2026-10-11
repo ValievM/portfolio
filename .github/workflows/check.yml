@@ -17,6 +17,20 @@ jobs:
       fail-fast: false
       matrix:
         project: [goshop, pr-reviewer-assignment]
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: pr_reviewer_test_db
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5434:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     defaults:
       run:
         working-directory: projects/${{ matrix.project }}
@@ -28,9 +42,9 @@ jobs:
           cache-dependency-path: projects/${{ matrix.project }}/go.sum
       - run: go build ./...
       - run: go vet ./...
-      - name: Reviewer service unit tests
+      - name: Reviewer service integration and E2E tests
         if: matrix.project == 'pr-reviewer-assignment'
-        run: go test -race -cover ./internal/...
+        run: go test -p 1 -race -count=1 -coverpkg=./internal/... -coverprofile=coverage.out ./tests/integration ./tests/e2e
   android:
     runs-on: ubuntu-latest
     timeout-minutes: 40
