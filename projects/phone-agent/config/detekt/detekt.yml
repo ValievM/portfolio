@@ -1,0 +1,37 @@
+build:
+  maxIssues: 0
+
+exceptions:
+  TooGenericExceptionCaught:
+    # Broadened only to include our own naming convention (`exception`) for a caught Exception
+    # that gets inspected (usually to log it) instead of silently discarded. Catching a broad
+    # Exception is itself deliberate at these adapter boundaries (HTTP, disk, IPC) to convert any
+    # failure into a sealed result type instead of letting it propagate — see AGENTS.md.
+    allowedExceptionNameRegex: "_|(ignore|expected|exception).*"
+
+naming:
+  FunctionNaming:
+    ignoreAnnotated:
+      - Composable
+  MatchingDeclarationName:
+    active: false
+
+complexity:
+  LongParameterList:
+    # Trailing test-seam parameters (Clock, AuthEntropy, timeoutMillis, ...) always carry a
+    # default and are never supplied in production code; they shouldn't count against a
+    # constructor's real complexity.
+    ignoreDefaultParameters: true
+
+style:
+  MagicNumber:
+    ignorePropertyDeclaration: true
+    ignoreNamedArgument: true
+    ignoreAnnotation: true
+  MaxLineLength:
+    maxLineLength: 140
+  UnusedPrivateMember:
+    ignoreAnnotated:
+      - Preview
+      - PreviewLightDark
+      - PreviewFontScale

@@ -1,0 +1,45 @@
+# Local development template. Replace placeholders before running.
+server:
+  host: "localhost"
+  port: 8080
+  read_timeout: 30s
+  write_timeout: 30s
+database:
+  postgres:
+    host: "localhost"
+    port: 5432
+    user: "goshop_user"
+    password: "your_secure_password_here"
+    dbname: "goshop_db"
+    sslmode: "disable"
+    max_open_conns: 25
+    max_idle_conns: 5
+    conn_max_lifetime: 300s
+jwt:
+  secret: "GENERATE_YOUR_OWN_RANDOM_SECRET_AT_LEAST_32_CHARS"
+  expires_in: 24h
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+  key_prefix: "goshop:"
+  dial_timeout: 5s
+  read_timeout: 3s
+  write_timeout: 3s
+  ttl:
+    products_popular: 5m
+    categories_all: 10m
+    cart: 5m
+s3:
+  access_key: "minioadmin"
+  secret: "minioadmin"
+  bucket: "goshop"
+  endpoint: "localhost:9000"
+  region: "us-east-1"
+  useSSL: false
+oauth:
+  google:
+    client_id: "YOUR_GOOGLE_CLIENT_ID"
+    client_secret: "YOUR_GOOGLE_CLIENT_SECRET"
+    redirect_url: "http://localhost:8080/auth/oauth/google/callback"

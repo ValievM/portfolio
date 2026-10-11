@@ -1,0 +1,57 @@
+# Android / Gradle
+.gradle/
+build/
+*.iml
+.idea/
+.air/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.ap_
+
+# Signing and secrets (never commit)
+*.jks
+*.keystore
+*.pem
+*.p12
+*.pfx
+*.key
+keystore.properties
+service-account*.json
+.netrc
+.env
+.env.*
+
+# Stage 0 spike: tokens and local environment
+spike/auth*.json
+spike/.venv/
+__pycache__/
+
+
+# Roborazzi reference screenshots: not committed until the design is approved (docs/design/qa.md)
+app/src/test/screenshots/
+
+# Local state of agents and editors (each person and tool keeps its own; nothing here belongs to the project)
+.claude/
+.zcodeignore
+.cursor/
+.vscode/
+
+# Logs, dumps and merge leftovers
+*.log
+*.hprof
+hs_err_pid*
+*.orig
+*.rej
+
+# OS
+.DS_Store
+
+# Kotlin Gradle plugin session data (any module)
+.kotlin/
+
+# Prompts handed to agents by the owner (generated, not versioned; source of truth: docs/tooling/swarm*.md)
+.prompts/

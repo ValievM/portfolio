@@ -1,0 +1,396 @@
+package database
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"time"
+
+	"pr-reviewer-assignment/internal/core/domain/entities"
+	domainErrors "pr-reviewer-assignment/internal/core/domain/errors"
+	"pr-reviewer-assignment/internal/core/domain/types"
+
+	"github.com/jackc/pgx/v5"
+	"go.uber.org/zap"
+)
+
+type PullRequestRepository struct {
+	db     DB
+	logger *zap.Logger
+}
+
+func NewPullRequestRepository(db DB, logger *zap.Logger) *PullRequestRepository {
+	return &PullRequestRepository{
+		db:     db,
+		logger: logger,
+	}
+}
+
+func (r *PullRequestRepository) Create(ctx context.Context, pr *entities.PullRequest) error {
+	const query = `
+		INSERT INTO pull_requests (pull_request_id, pull_request_name, author_id, status, created_at, merged_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
+	`
+
+	r.logger.Debug("Creating pull request",
+		zap.String("pr_id", pr.ID),
+		zap.String("author_id", pr.AuthorID))
+
+	var mergedAt any
+	if pr.MergedAt != nil {
+		mergedAt = *pr.MergedAt
+	}
+
+	db := r.dbFor(ctx)
+
+	if _, err := db.Exec(ctx, query,
+		pr.ID,
+		pr.Name,
+		pr.AuthorID,
+		pr.Status.String(),
+		pr.CreatedAt,
+		mergedAt,
+	); err != nil {
+		if isPgError(err, pgCodeUniqueViolation) {
+			r.logger.Warn("Pull request already exists",
+				zap.String("pr_id", pr.ID))
+			return domainErrors.PRExists(pr.ID)
+		}
+
+		r.logger.Error("Failed to create pull request",
+			zap.String("pr_id", pr.ID),
+			zap.Error(err))
+		return err
+	}
+
+	if err := r.syncReviewers(ctx, db, pr.ID, pr.AssignedReviewers, false); err != nil {
+		r.logger.Error("Failed to create reviewers, rolling back PR row",
+			zap.String("pr_id", pr.ID),
+			zap.Error(err))
+		_, _ = db.Exec(ctx, `DELETE FROM pull_requests WHERE pull_request_id = $1`, pr.ID)
+		return err
+	}
+
+	return nil
+}
+
+func (r *PullRequestRepository) Update(ctx context.Context, pr *entities.PullRequest) error {
+	const query = `
+		UPDATE pull_requests
+		SET pull_request_name = $2,
+		    status = $3,
+		    merged_at = $4
+		WHERE pull_request_id = $1
+	`
+
+	db := r.dbFor(ctx)
+
+	r.logger.Debug("Updating pull request", zap.String("pr_id", pr.ID))
+
+	var mergedAt any
+	if pr.MergedAt != nil {
+		mergedAt = *pr.MergedAt
+	}
+
+	tag, err := db.Exec(ctx, query,
+		pr.ID,
+		pr.Name,
+		pr.Status.String(),
+		mergedAt,
+	)
+	if err != nil {
+		r.logger.Error("Failed to update pull request",
+			zap.String("pr_id", pr.ID),
+			zap.Error(err))
+		return err
+	}
+
+	if tag.RowsAffected() == 0 {
+		r.logger.Warn("Pull request not found while updating",
+			zap.String("pr_id", pr.ID))
+		return domainErrors.NotFound(fmt.Sprintf("pull request %s", pr.ID))
+	}
+
+	if err := r.syncReviewers(ctx, db, pr.ID, pr.AssignedReviewers, true); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *PullRequestRepository) GetByID(ctx context.Context, prID string) (*entities.PullRequest, error) {
+	const query = `
+		SELECT pull_request_id, pull_request_name, author_id, status, created_at, merged_at
+		FROM pull_requests
+		WHERE pull_request_id = $1
+	`
+
+	db := r.dbFor(ctx)
+
+	pr, err := scanPullRequest(db.QueryRow(ctx, query, prID))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			r.logger.Warn("Pull request not found",
+				zap.String("pr_id", prID))
+			return nil, domainErrors.NotFound(fmt.Sprintf("pull request %s", prID))
+		}
+
+		r.logger.Error("Failed to get pull request",
+			zap.String("pr_id", prID),
+			zap.Error(err))
+		return nil, err
+	}
+
+	reviewers, err := r.fetchReviewers(ctx, db, pr.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	pr.SetReviewers(reviewers)
+	return pr, nil
+}
+
+func (r *PullRequestRepository) ListByReviewer(ctx context.Context, reviewerID string) ([]*entities.PullRequest, error) {
+	const query = `
+		SELECT DISTINCT 
+			pr.pull_request_id, pr.pull_request_name, pr.author_id, pr.status, pr.created_at, pr.merged_at,
+			rev2.user_id
+		FROM pull_requests pr
+		JOIN pr_reviewers rev ON rev.pull_request_id = pr.pull_request_id
+		LEFT JOIN pr_reviewers rev2 ON rev2.pull_request_id = pr.pull_request_id
+		WHERE rev.user_id = $1
+		ORDER BY pr.created_at DESC, rev2.user_id ASC
+	`
+
+	db := r.dbFor(ctx)
+
+	rows, err := db.Query(ctx, query, reviewerID)
+	if err != nil {
+		r.logger.Error("Failed to list PRs by reviewer",
+			zap.String("reviewer_id", reviewerID),
+			zap.Error(err))
+		return nil, err
+	}
+	defer rows.Close()
+
+	prMap := make(map[string]*entities.PullRequest)
+	var prOrder []string
+
+	for rows.Next() {
+		var (
+			id, name, authorID, statusStr string
+			createdAt                     time.Time
+			mergedAt                      sql.NullTime
+			reviewerUserID                sql.NullString
+		)
+
+		if err := rows.Scan(&id, &name, &authorID, &statusStr, &createdAt, &mergedAt, &reviewerUserID); err != nil {
+			r.logger.Error("Failed to scan pull request row",
+				zap.String("reviewer_id", reviewerID),
+				zap.Error(err))
+			return nil, err
+		}
+
+		if _, exists := prMap[id]; !exists {
+			status, ok := types.ParsePRStatus(statusStr)
+			if !ok {
+				r.logger.Error("Invalid pull request status while listing by reviewer",
+					zap.String("status", statusStr))
+				return nil, fmt.Errorf("invalid pull request status: %s", statusStr)
+			}
+
+			var mergedPtr *time.Time
+			if mergedAt.Valid {
+				t := mergedAt.Time.UTC()
+				mergedPtr = &t
+			}
+
+			prMap[id] = &entities.PullRequest{
+				ID:                id,
+				Name:              name,
+				AuthorID:          authorID,
+				Status:            status,
+				AssignedReviewers: make([]string, 0, 2),
+				CreatedAt:         createdAt,
+				MergedAt:          mergedPtr,
+			}
+			prOrder = append(prOrder, id)
+		}
+
+		if reviewerUserID.Valid {
+			prMap[id].AssignedReviewers = append(prMap[id].AssignedReviewers, reviewerUserID.String)
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		r.logger.Error("Rows iteration failed while listing PRs by reviewer",
+			zap.String("reviewer_id", reviewerID),
+			zap.Error(err))
+		return nil, err
+	}
+
+	result := make([]*entities.PullRequest, 0, len(prOrder))
+	for _, id := range prOrder {
+		pr := prMap[id]
+		pr.SetReviewers(pr.AssignedReviewers)
+		result = append(result, pr)
+	}
+
+	return result, nil
+}
+
+func (r *PullRequestRepository) Count(ctx context.Context) (int, error) {
+	const query = `SELECT COUNT(*) FROM pull_requests`
+	var count int
+	if err := r.db.QueryRow(ctx, query).Scan(&count); err != nil {
+		r.logger.Error("Failed to count pull requests", zap.Error(err))
+		return 0, err
+	}
+	return count, nil
+}
+
+func (r *PullRequestRepository) CountAssignments(ctx context.Context) (int, error) {
+	const query = `SELECT COUNT(*) FROM pr_reviewers`
+	var count int
+	if err := r.db.QueryRow(ctx, query).Scan(&count); err != nil {
+		r.logger.Error("Failed to count assignments", zap.Error(err))
+		return 0, err
+	}
+	return count, nil
+}
+
+func (r *PullRequestRepository) fetchReviewers(ctx context.Context, db DB, prID string) ([]string, error) {
+	const query = `
+		SELECT user_id
+		FROM pr_reviewers
+		WHERE pull_request_id = $1
+		ORDER BY assigned_at ASC, user_id ASC
+	`
+
+	rows, err := db.Query(ctx, query, prID)
+	if err != nil {
+		r.logger.Error("Failed to fetch reviewers",
+			zap.String("pr_id", prID),
+			zap.Error(err))
+		return nil, err
+	}
+	defer rows.Close()
+
+	reviewers := make([]string, 0, 2)
+
+	for rows.Next() {
+		var userID string
+		if err := rows.Scan(&userID); err != nil {
+			r.logger.Error("Failed to scan reviewer row",
+				zap.String("pr_id", prID),
+				zap.Error(err))
+			return nil, err
+		}
+
+		reviewers = append(reviewers, userID)
+	}
+
+	if err := rows.Err(); err != nil {
+		r.logger.Error("Reviewer rows iteration failed",
+			zap.String("pr_id", prID),
+			zap.Error(err))
+		return nil, err
+	}
+
+	return reviewers, nil
+}
+
+func (r *PullRequestRepository) syncReviewers(ctx context.Context, db DB, prID string, reviewers []string, replace bool) error {
+	if replace {
+		if _, err := db.Exec(ctx, `DELETE FROM pr_reviewers WHERE pull_request_id = $1`, prID); err != nil {
+			r.logger.Error("Failed to delete existing reviewers",
+				zap.String("pr_id", prID),
+				zap.Error(err))
+			return err
+		}
+	}
+
+	if len(reviewers) == 0 {
+		return nil
+	}
+
+	const query = `
+		INSERT INTO pr_reviewers (pull_request_id, user_id)
+		VALUES ($1, $2)
+	`
+
+	for _, reviewer := range reviewers {
+		if reviewer == "" {
+			continue
+		}
+
+		if _, err := db.Exec(ctx, query, prID, reviewer); err != nil {
+			if isPgError(err, pgCodeForeignKeyViolation) {
+				r.logger.Warn("Reviewer not found while syncing assignment",
+					zap.String("pr_id", prID),
+					zap.String("reviewer", reviewer))
+				return domainErrors.NotFound(fmt.Sprintf("user %s", reviewer))
+			}
+
+			if isPgError(err, pgCodeUniqueViolation) {
+				r.logger.Debug("Reviewer already assigned",
+					zap.String("pr_id", prID),
+					zap.String("reviewer", reviewer))
+				continue
+			}
+
+			r.logger.Error("Failed to assign reviewer",
+				zap.String("pr_id", prID),
+				zap.String("reviewer", reviewer),
+				zap.Error(err))
+			return err
+		}
+	}
+
+	return nil
+}
+
+func scanPullRequest(row rowScanner) (*entities.PullRequest, error) {
+	var (
+		id        string
+		name      string
+		authorID  string
+		statusStr string
+		createdAt time.Time
+		mergedAt  sql.NullTime
+	)
+
+	if err := row.Scan(&id, &name, &authorID, &statusStr, &createdAt, &mergedAt); err != nil {
+		return nil, err
+	}
+
+	status, ok := types.ParsePRStatus(statusStr)
+	if !ok {
+		return nil, fmt.Errorf("invalid pull request status: %s", statusStr)
+	}
+
+	var mergedPtr *time.Time
+	if mergedAt.Valid {
+		t := mergedAt.Time.UTC()
+		mergedPtr = &t
+	}
+
+	return &entities.PullRequest{
+		ID:                id,
+		Name:              name,
+		AuthorID:          authorID,
+		Status:            status,
+		AssignedReviewers: make([]string, 0, 2),
+		CreatedAt:         createdAt,
+		MergedAt:          mergedPtr,
+	}, nil
+}
+
+func (r *PullRequestRepository) dbFor(ctx context.Context) DB {
+	if tx := DBFromContext(ctx); tx != nil {
+		return tx
+	}
+
+	return r.db
+}

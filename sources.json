@@ -1,0 +1,20 @@
+[
+  {
+    "project": "phone-agent",
+    "repository": "https://github.com/ValievM/phone-agent",
+    "commit": "555acc5867989227a56362384819b27f1ffd21c3",
+    "imported_at": "2026-10-11"
+  },
+  {
+    "project": "pr-reviewer-assignment",
+    "repository": "https://github.com/ValievM/pr-reviewer-assignment",
+    "commit": "65ad61f30850af7ee96c3060b72bf663f57408b5",
+    "imported_at": "2026-10-11"
+  },
+  {
+    "project": "goshop",
+    "repository": "https://github.com/ValievM/goshop",
+    "commit": "cb5423aeac787e0723c49e63890511fd6fbc2410",
+    "imported_at": "2026-10-11"
+  }
+]

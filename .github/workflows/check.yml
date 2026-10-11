@@ -1,0 +1,56 @@
+name: Portfolio checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: portfolio-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [goshop, pr-reviewer-assignment]
+    defaults:
+      run:
+        working-directory: projects/${{ matrix.project }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: projects/${{ matrix.project }}/go.mod
+          cache-dependency-path: projects/${{ matrix.project }}/go.sum
+      - run: go build ./...
+      - run: go vet ./...
+      - name: Reviewer service unit tests
+        if: matrix.project == 'pr-reviewer-assignment'
+        run: go test -race -cover ./internal/...
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: projects/phone-agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew check
+      - run: python3 scripts/check_docs.py
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: android-reports
+          path: |
+            projects/phone-agent/**/build/reports/
+            projects/phone-agent/**/build/test-results/

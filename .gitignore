@@ -1,0 +1,13 @@
+**/.DS_Store
+**/local.properties
+**/*.jks
+**/*.keystore
+**/config.yaml
+**/.env
+!projects/pr-reviewer-assignment/.env
+**/build/
+**/.gradle/
+**/.kotlin/
+**/bin/
+**/venv/
+**/__pycache__/
