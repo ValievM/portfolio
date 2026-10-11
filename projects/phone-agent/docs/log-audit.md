@@ -1,6 +1,6 @@
 # Аудит логов (этап 5.5)
 
-> См. также: [security в AGENTS.md](../AGENTS.md) · [manual-verification.md](manual-verification.md) · [stages/5-hardening.md](stages/5-hardening.md)
+> См. также:  · [manual-verification.md](manual-verification.md)
 
 Цель: в логах нет токенов, текста чата и данных файлов (имён, путей, содержимого). Проверено 23.09.2026.
 

@@ -1,6 +1,6 @@
 # Что выяснено (факты и статус)
 
-> См. также: [требования](../product/requirements.md) · [адаптеры](../architecture/adapters.md) · [этап 0](../stages/0-spike.md)
+> См. также: [требования](../product/requirements.md) · [адаптеры](../architecture/adapters.md)
 
 Исходные факты до этапа 0. После этапа 0 проверенные значения живут в `docs/backend-notes.md` (источник истины для констант).
 

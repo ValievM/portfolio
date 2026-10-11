@@ -1,6 +1,6 @@
 # Заметки о входе и бэкенде (результат этапа 0)
 
-> См. также: [research/backend-facts.md](research/backend-facts.md) (исходные гипотезы) · [architecture/adapters.md](architecture/adapters.md) · [stages/0-spike.md](stages/0-spike.md) · [adr/0002-subscription-login-go.md](adr/0002-subscription-login-go.md)
+> См. также: [research/backend-facts.md](research/backend-facts.md) (исходные гипотезы) · [architecture/adapters.md](architecture/adapters.md)· [adr/0002-subscription-login-go.md](adr/0002-subscription-login-go.md)
 
 **Источник истины для констант входа и бэкенда.** Проверено 21-22.09.2026 скриптом `spike/probe.py` на аккаунте с тарифом Plus. Источник исходных значений: репозиторий `openai/codex`, коммит `142360d` (21.09.2026). Статус у каждого значения: **запуск** (проверено живым запросом), **исходники** (из кода Codex, не проверено), **не проверено**.
 

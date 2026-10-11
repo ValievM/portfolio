@@ -13,4 +13,3 @@
 Gradle 8.13 не умеет работать на JDK 24 (системная в этой среде), а проекту нужна 17. Файл `gradle/gradle-daemon-jvm.properties` (`toolchainVersion=17`) заставляет демон Gradle запускаться на JDK 17. Чтобы Gradle нашёл её на Mac, в `~/.gradle/gradle.properties` должна быть строка `org.gradle.java.installations.paths=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home` (это локальная настройка, в репозиторий не входит). После этого обычный `./gradlew` работает без `JAVA_HOME` и без флагов; `scripts/check.sh` по-прежнему годится.
 
 ## Пуш
-Пушит агент только по слову владельца («пушь»). Перед пушем проверка на секреты (`*.jks`, `local.properties`, `spike/auth*.json`, токены, ключи в диффе); вся история на GitHub проверена 2026-09-25: секретов нет.
